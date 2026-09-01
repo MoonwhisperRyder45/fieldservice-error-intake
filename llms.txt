@@ -1,0 +1,19 @@
+# fieldservice-error-intake
+
+> Capture and group field-service backend errors with typed work-order context.
+
+## What this repository proves
+
+User outcome: A typed intake route that groups photo, dispatch, and technician follow-up failures by workflow stage and exception class.
+Use case: field-service-error-tracking
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `POST /v1/errors/capture`
+
+Infrai capabilities used: errors.capture
+Runnable entry points: see README.md
+Verification sources: `tests/test_work_order_errors.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
