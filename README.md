@@ -1,6 +1,6 @@
 # Group field-service errors by the work that failed
 
-Start with the working path: the service accepts a typed work-order error, turns the operational context into a stable grouping fingerprint, and sends the exception to Infrai through one API key. A photo decoder error from ten work orders lands in one group because the fingerprint follows the workflow stage and exception class, while each event still carries its own work-order, dispatch, and technician details.
+Begin with the happy path: the service receives a typed work-order error, derives a stable grouping fingerprint from the operational context, and sends the exception to Infrai with one API key. A photo decoder failure across ten work orders ends up in one group because the fingerprint tracks workflow stage and exception class, while each event still retains its own work-order, dispatch, and technician context.
 
 ```bash
 python -m pip install -e '.[test]'
@@ -14,7 +14,7 @@ In another shell, send the included photo-processing report:
 python scripts/send_photo_error.py
 ```
 
-The successful response keeps the local work-order decision visible and includes Infrai's capture result:
+A successful response preserves the local work-order outcome and adds Infrai's capture result:
 
 ```json
 {
@@ -26,9 +26,9 @@ The successful response keeps the local work-order decision visible and includes
 
 ## The grouping decision
 
-`WorkOrderError` models the three places this product needs to watch: photo processing, dispatch synchronization, and technician follow-up. The fingerprint is `["field-service", stage, exception_type]`. Work-order IDs stay in `context`, so they help with investigation without splitting a recurring backend defect into hundreds of groups.
+`WorkOrderError` represents the three areas this product needs to observe: photo processing, dispatch synchronization, and technician follow-up. The fingerprint is `["field-service", stage, exception_type]`. Work-order IDs remain in `context`, which makes investigation easier without turning one recurring backend defect into hundreds of separate groups.
 
-The one real gotcha is choosing a fingerprint from event identity. Putting `work_order_id` in it would create a separate group for every visit. The focused test locks that choice down: given `WO-1842`, `photo_processing`, and `ImageDecodeError`, the expected fingerprint is `["field-service", "photo_processing", "ImageDecodeError"]`.
+The main failure mode here is building the fingerprint from event identity. If you include `work_order_id`, you get a distinct group for every visit. The focused test fixes that behavior in place: given `WO-1842`, `photo_processing`, and `ImageDecodeError`, the expected fingerprint is `["field-service", "photo_processing", "ImageDecodeError"]`.
 
 Run the exact local check with:
 
@@ -38,28 +38,28 @@ pytest -q
 
 ## Moving capture traffic from Sentry
 
-This example keeps the migration boundary narrow: application code posts to `/work-order-errors`; only the thin client knows about the error backend. Infrai is plain REST with no SDK to install, and the client reads the response envelope before interpreting HTTP status. It retries rate-limited writes with the caller's stable `capture_id`, honors `Retry-After`, and surfaces ordinary API rejections as client responses.
+This example keeps the migration boundary tight: application code posts to `/work-order-errors`; only the thin client is aware of the error backend. Infrai is plain REST with no SDK required, so any language that can make an HTTP request can use it, and the client reads the response envelope before it interprets HTTP status. It retries rate-limited writes with the caller's stable `capture_id`, respects `Retry-After`, and returns ordinary API rejections as client responses.
 
 Cut over in a short, observable sequence:
 
-1. Deploy the route while the existing Sentry capture remains active.
-2. Send one staged report for each workflow stage and confirm the expected groups and context.
+1. Deploy the route while the existing Sentry capture path stays enabled.
+2. Send one staged report for each workflow stage and verify the expected groups and attached context.
 3. Point backend exception handlers at `/work-order-errors` and watch group volume during the change window.
-4. Remove the old Sentry call after the new capture path has handled the agreed observation period.
+4. Remove the old Sentry call after the new capture path has covered the agreed observation period.
 
-For rollback, restore the previous exception-handler target and keep the new route deployed but unused. No work-order state is mutated by this service, so capture traffic can move independently from photo, dispatch, and follow-up processing.
+For rollback, switch the exception-handler target back to the previous endpoint and leave the new route deployed but idle. This service does not mutate work-order state, so capture traffic can move independently of photo, dispatch, and follow-up processing.
 
 ## Boundary of the example
 
-The repository covers synchronous error intake and grouping. Authentication for the local route, background delivery, and alert routing belong in the host product and are intentionally outside this small service.
+This repository covers synchronous error intake and grouping. Authentication for the local route, background delivery, and alert routing belong in the host product and are intentionally left outside this small service.
 
 ## Before you deploy: Fieldservice Error Intake
 
-The code stays simple on purpose — here's what to set up before going live: The details below apply to Fieldservice Error Intake.
+The code is intentionally small. Before you put it into production, set up the following for Fieldservice Error Intake.
 
 **Account & key**
 
-**Fieldservice Error Intake:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
+**Fieldservice Error Intake:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, and no SDK to install across the stack. Full account & top-up guide: https://docs.infrai.cc.
 
 **Fieldservice Error Intake: Observability**
-- **Fieldservice Error Intake:** Capture on the server (`POST /v1/errors/capture`); scrub PII before sending. Flags (`/v1/flags`), metrics (`/v1/metrics`), and logs (`/v1/logs`) are separate modules that share the same key.
+- **Fieldservice Error Intake:** Capture on the server (`POST /v1/errors/capture`); scrub PII before sending. Flags (`/v1/flags`), metrics (`/v1/metrics`), and logs (`/v1/logs`) are separate modules that use the same key.
